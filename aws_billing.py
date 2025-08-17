@@ -165,6 +165,52 @@ class AWSBillingAnalyzer:
             logger.error(f"Error fetching total cost: {e}")
             return 0.0
     
+    def get_credits(self) -> float:
+        """
+        Get total credits applied for the period.
+        
+        Returns:
+            Total credits as float (negative value)
+        """
+        try:
+            response = self.ce_client.get_cost_and_usage(
+                TimePeriod={
+                    'Start': self.start_date.strftime('%Y-%m-%d'),
+                    'End': self.end_date.strftime('%Y-%m-%d')
+                },
+                Granularity='MONTHLY',
+                Metrics=['AmortizedCost'],
+                GroupBy=[
+                    {'Type': 'DIMENSION', 'Key': 'RECORD_TYPE'}
+                ]
+            )
+            
+            total_credits = 0.0
+            
+            for result in response['ResultsByTime']:
+                for group in result.get('Groups', []):
+                    record_type = group['Keys'][0]
+                    if 'Credit' in record_type:
+                        cost = float(group['Metrics']['AmortizedCost']['Amount'])
+                        total_credits += cost
+            
+            return total_credits
+            
+        except Exception as e:
+            logger.error(f"Error fetching credits: {e}")
+            return 0.0
+    
+    def get_net_cost(self) -> float:
+        """
+        Get net cost after credits for the period.
+        
+        Returns:
+            Net cost as float
+        """
+        total_cost = self.get_total_cost()
+        credits = self.get_credits()
+        return total_cost + credits  # credits are negative, so this subtracts them
+    
     def generate_billing_report(self) -> Dict[str, Any]:
         """
         Generate a comprehensive billing report.
@@ -174,6 +220,10 @@ class AWSBillingAnalyzer:
         """
         logger.info(f"Generating billing report for period: {self.start_date.date()} to {self.end_date.date()}")
         
+        total_cost = self.get_total_cost()
+        credits = self.get_credits()
+        net_cost = self.get_net_cost()
+        
         report = {
             'period': {
                 'start_date': self.start_date.strftime('%Y-%m-%d'),
@@ -181,7 +231,9 @@ class AWSBillingAnalyzer:
                 'period_type': config.billing.period_type,
                 'period_count': config.billing.period_count
             },
-            'total_cost': self.get_total_cost(),
+            'total_cost': total_cost,
+            'credits': credits,
+            'net_cost': net_cost,
             'currency': config.billing.currency,
             'costs_by_service': self.get_cost_by_service(),
             'costs_by_usage_type': self.get_cost_by_usage_type(),

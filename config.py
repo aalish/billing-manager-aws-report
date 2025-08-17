@@ -10,10 +10,10 @@ class BillingConfig(BaseModel):
     """Configuration for billing period and settings."""
     
     # Billing period: 'd' for days, 'm' for months
-    period_type: Literal['d', 'm'] = 'd'
+    period_type: Literal['d', 'm'] = 'm'
     
-    # Number of periods to look back (default: 7 days for last week)
-    period_count: int = 7
+    # Number of periods to look back (default: 1 month)
+    period_count: int = 1
     
     # AWS region for billing data
     aws_region: str = 'us-east-1'

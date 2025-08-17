@@ -63,58 +63,28 @@ class BillingManager:
         Args:
             report: Billing report data
         """
-        print("\n" + "="*60)
-        print("AWS BILLING REPORT")
-        print("="*60)
-        
         period = report.get('period', {})
-        print(f"Period: {period.get('start_date', 'N/A')} to {period.get('end_date', 'N/A')}")
-        print(f"Total Cost: {report.get('currency', 'USD')} {report.get('total_cost', 0):.2f}")
-        print()
+        total_cost = report.get('total_cost', 0)
+        credits = report.get('credits', 0)
+        net_cost = report.get('net_cost', 0)
+        currency = report.get('currency', 'USD')
         
-        # Display costs by service
-        costs_by_service = report.get('costs_by_service', {})
-        if costs_by_service:
-            print("COSTS BY SERVICE:")
-            print("-" * 30)
-            sorted_services = sorted(costs_by_service.items(), key=lambda x: x[1], reverse=True)
-            
-            for service, cost in sorted_services:
-                total_cost = report.get('total_cost', 0)
-                percentage = (cost / total_cost * 100) if total_cost > 0.01 else 0
-                print(f"{service:<30} {report.get('currency', 'USD')} {cost:>8.2f} ({percentage:>5.1f}%)")
+        # Determine period type for display
+        period_type = period.get('period_type', 'd')
+        period_count = period.get('period_count', 7)
+        
+        if period_type == 'm':
+            period_text = f"month{'s' if period_count > 1 else ''}"
         else:
-            print("No significant costs found for this period.")
+            period_text = f"day{'s' if period_count > 1 else ''}"
         
-        print()
-        
-        # Display costs by usage type
-        costs_by_usage = report.get('costs_by_usage_type', {})
-        if costs_by_usage:
-            print("COSTS BY USAGE TYPE:")
-            print("-" * 30)
-            sorted_usage = sorted(costs_by_usage.items(), key=lambda x: x[1], reverse=True)
-            
-            for usage_type, cost in sorted_usage[:10]:  # Show top 10
-                total_cost = report.get('total_cost', 0)
-                percentage = (cost / total_cost * 100) if total_cost > 0.01 else 0
-                print(f"{usage_type:<30} {report.get('currency', 'USD')} {cost:>8.2f} ({percentage:>5.1f}%)")
-        
-        print()
-        
-        # Display daily costs
-        daily_costs = report.get('daily_costs', [])
-        if daily_costs:
-            print("DAILY COST TREND:")
-            print("-" * 30)
-            for day in daily_costs:
-                date = day.get('date', 'N/A')
-                cost = day.get('cost', 0)
-                print(f"{date:<12} {report.get('currency', 'USD')} {cost:>8.2f}")
-        
-        print("="*60)
-        print(f"Report generated at: {report.get('generated_at', 'N/A')}")
-        print("="*60)
+        print(f"Charges on Credit: {currency} {total_cost:.2f}")
+        if credits < 0:
+            print(f"Remaining Credit: {currency} {abs(credits):.2f}")
+        if net_cost >= 0:
+            print(f"Net Remaining Charges: {currency} {net_cost:.2f}")
+        else:
+            print(f"Net Remaining Charges: {currency} 0.00")
     
     def send_notifications(self, report: Dict[str, Any]) -> None:
         """

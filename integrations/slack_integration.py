@@ -34,34 +34,27 @@ class SlackIntegration:
         """
         period = billing_report['period']
         total_cost = billing_report['total_cost']
+        credits = billing_report.get('credits', 0)
+        net_cost = billing_report.get('net_cost', 0)
         currency = billing_report['currency']
-        costs_by_service = billing_report['costs_by_service']
         
-        # Format the message
-        message = f"*AWS Billing Report*\n"
-        message += f"Period: {period['start_date']} to {period['end_date']}\n"
-        message += f"Total Cost: {currency} {total_cost:.2f}\n\n"
+        # Determine period type for display
+        period_type = period.get('period_type', 'd')
+        period_count = period.get('period_count', 7)
         
-        if costs_by_service:
-            message += "*Costs by Service:*\n"
-            # Sort services by cost (highest first)
-            sorted_services = sorted(costs_by_service.items(), key=lambda x: x[1], reverse=True)
-            
-            for service, cost in sorted_services:
-                percentage = (cost / total_cost * 100) if total_cost > 0 else 0
-                message += f"• {service}: {currency} {cost:.2f} ({percentage:.1f}%)\n"
+        if period_type == 'm':
+            period_text = f"month{'s' if period_count > 1 else ''}"
         else:
-            message += "*No significant costs found for this period.*\n"
+            period_text = f"day{'s' if period_count > 1 else ''}"
         
-        # Add daily cost trend if available
-        daily_costs = billing_report.get('daily_costs', [])
-        if daily_costs:
-            message += f"\n*Daily Cost Trend:*\n"
-            for day in daily_costs[-5:]:  # Show last 5 days
-                date = datetime.strptime(day['date'], '%Y-%m-%d').strftime('%m/%d')
-                message += f"• {date}: {currency} {day['cost']:.2f}\n"
-        
-        message += f"\n_Report generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_"
+        # Build message with credits
+        message = f"Charges on Credit: {currency} {total_cost:.2f}"
+        if credits < 0:
+            message += f"\nRemaining Credit: {currency} {abs(credits):.2f}"
+        if net_cost >= 0:
+            message += f"\nNet Remaining Charges: {currency} {net_cost:.2f}"
+        else:
+            message += f"\nNet Remaining Charges: {currency} 0.00"
         
         return message
     

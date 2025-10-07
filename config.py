@@ -15,7 +15,7 @@ class BillingConfig(BaseModel):
     # Number of periods to look back (default: 1 month)
     period_count: int = 1
     
-    # AWS region for billing data
+    # AWS region for billing data (will be overridden by .env)
     aws_region: str = 'us-east-1'
     
     # Currency for billing (default: USD)
@@ -26,9 +26,6 @@ class BillingConfig(BaseModel):
     
     # Total AWS credits available (in currency units)
     total_credits: float = 5000.0
-    
-    # AWS profile to use (default: neelcamp)
-    aws_profile: str = 'neelcamp'
     
     # Credit expiration date (if known)
     credit_expiration: str = '2026-12-31'  # Format: YYYY-MM-DD

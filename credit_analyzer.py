@@ -19,7 +19,7 @@ def print_header():
     print("           AWS CREDIT ANALYZER - NEELCAMP PROFILE")
     print("=" * 70)
     print(f"Total Credits: ${config.billing.total_credits:.2f}")
-    print(f"Profile: {config.billing.aws_profile}")
+    print(f"Using .env credentials")
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nError running credit analysis: {e}")
         print("\nTroubleshooting:")
-        print("1. Ensure AWS profile 'neelcamp' is configured")
+        print("1. Ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set in .env file")
         print("2. Check AWS permissions for Cost Explorer")
         print("3. Verify internet connectivity")
         sys.exit(1)

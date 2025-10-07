@@ -2,10 +2,15 @@
 AWS Billing module for fetching and analyzing billing data.
 """
 import boto3
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 import logging
+from dotenv import load_dotenv
 from config import config
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,11 +21,26 @@ class AWSBillingAnalyzer:
     """Analyzes AWS billing data using Cost Explorer API."""
     
     def __init__(self):
-        """Initialize the AWS billing analyzer."""
-        # Create boto3 session with profile
-        session = boto3.Session(profile_name=config.billing.aws_profile)
-        self.ce_client = session.client('ce', region_name=config.billing.aws_region)
+        """Initialize the AWS billing analyzer using .env credentials."""
+        # Get AWS credentials from environment variables
+        aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        aws_region = os.getenv('AWS_REGION', config.billing.aws_region)
+        
+        # Validate required credentials
+        if not aws_access_key_id or not aws_secret_access_key:
+            raise ValueError("AWS credentials not found in .env file. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+        
+        # Create boto3 client with explicit credentials from .env
+        self.ce_client = boto3.client(
+            'ce',
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=aws_region
+        )
+        
         self.start_date, self.end_date = config.get_billing_period()
+        logger.info(f"AWS Cost Explorer client initialized with region: {aws_region}")
     
     def get_cost_by_service(self) -> Dict[str, float]:
         """

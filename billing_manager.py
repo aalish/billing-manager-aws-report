@@ -211,7 +211,7 @@ class BillingManager:
     
     def check_aws_credentials(self) -> bool:
         """
-        Check if AWS credentials are properly configured.
+        Check if AWS credentials are properly configured in .env file.
         
         Returns:
             True if credentials are available, False otherwise
@@ -220,10 +220,11 @@ class BillingManager:
         
         for var in required_vars:
             if not os.getenv(var):
-                logger.error(f"Missing required environment variable: {var}")
+                logger.error(f"Missing required environment variable in .env file: {var}")
                 return False
         
-        logger.info("AWS credentials found")
+        aws_region = os.getenv('AWS_REGION', 'us-east-1')
+        logger.info(f"AWS credentials found in .env file (region: {aws_region})")
         return True
 
 
@@ -233,7 +234,8 @@ def main():
     
     # Check AWS credentials
     if not billing_manager.check_aws_credentials():
-        print("ERROR: AWS credentials not found. Please check your .env file.")
+        print("ERROR: AWS credentials not found in .env file.")
+        print("Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set in .env")
         return
     
     # Run billing analysis

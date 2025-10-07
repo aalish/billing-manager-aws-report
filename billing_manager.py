@@ -58,33 +58,101 @@ class BillingManager:
     
     def _display_report_console(self, report: Dict[str, Any]) -> None:
         """
-        Display billing report in console for development.
+        Display billing report in console with comprehensive credit information.
         
         Args:
             report: Billing report data
         """
         period = report.get('period', {})
-        total_cost = report.get('total_cost', 0)
-        credits = report.get('credits', 0)
-        net_cost = report.get('net_cost', 0)
+        costs = report.get('costs', {})
+        credits = report.get('credits', {})
         currency = report.get('currency', 'USD')
         
         # Determine period type for display
         period_type = period.get('period_type', 'd')
-        period_count = period.get('period_count', 7)
+        period_count = period.get('period_count', 1)
         
         if period_type == 'm':
             period_text = f"month{'s' if period_count > 1 else ''}"
         else:
             period_text = f"day{'s' if period_count > 1 else ''}"
         
-        print(f"Charges on Credit: {currency} {total_cost:.2f}")
-        if credits < 0:
-            print(f"Remaining Credit: {currency} {abs(credits):.2f}")
-        if net_cost >= 0:
-            print(f"Net Remaining Charges: {currency} {net_cost:.2f}")
+        print("\n" + "=" * 60)
+        print(f"     AWS BILLING REPORT - {period_count} {period_text.upper()}")
+        print("=" * 60)
+        
+        # Period information
+        print(f"Period: {period.get('start_date')} to {period.get('end_date')}")
+        print()
+        
+        # Credit Overview - get accurate remaining credits
+        total_credits = 5000
+        expiration = 'Unknown'
+        
+        # Get fresh credit calculations from AWS
+        try:
+            used_lifetime = self.aws_analyzer.get_credits_used_lifetime()
+            remaining_credits = self.aws_analyzer.get_remaining_credits()
+        except:
+            # Fallback values
+            used_lifetime = 0
+            remaining_credits = total_credits
+        
+        print("💳 CREDIT OVERVIEW:")
+        print(f"   Total Credits Available: {currency} {total_credits:.2f}")
+        print(f"   Credits Used (Lifetime): {currency} {used_lifetime:.2f}")
+        print(f"   Credits Remaining:       {currency} {remaining_credits:.2f}")
+        print(f"   Credit Expiration:       {expiration}")
+        
+        # Calculate percentage used
+        if total_credits > 0:
+            percent_used = (used_lifetime / total_credits) * 100
+            percent_remaining = 100 - percent_used
+            print(f"   Usage Percentage:        {percent_used:.1f}% used, {percent_remaining:.1f}% remaining")
+        print()
+        
+        # Current Period Costs - handle both dict and legacy formats
+        if isinstance(costs, dict):
+            usage_cost = costs.get('usage_cost_period', 0)
+            net_cost = costs.get('net_cost_period', 0)
         else:
-            print(f"Net Remaining Charges: {currency} 0.00")
+            # Legacy format
+            usage_cost = report.get('total_cost', 0)
+            net_cost = report.get('net_cost', 0)
+            
+        if isinstance(credits, dict):
+            credits_applied = credits.get('applied_this_period', 0)
+        else:
+            credits_applied = abs(credits) if credits < 0 else 0
+        
+        print("📊 CURRENT PERIOD COSTS:")
+        print(f"   Actual Usage Cost:       {currency} {usage_cost:.2f}")
+        print(f"   Credits Applied:         {currency} {credits_applied:.2f}")
+        print(f"   Net Cost (You Pay):      {currency} {max(0, net_cost):.2f}")
+        print()
+        
+        # Credit burn rate estimation
+        if period_count > 0 and credits_applied > 0:
+            monthly_burn_rate = credits_applied * (30 / (period_count * (30 if period_type == 'm' else 1)))
+            if monthly_burn_rate > 0 and remaining_credits > 0:
+                months_remaining = remaining_credits / monthly_burn_rate
+                print("⏱️  CREDIT BURN RATE ANALYSIS:")
+                print(f"   Estimated Monthly Burn:  {currency} {monthly_burn_rate:.2f}")
+                print(f"   Est. Months Remaining:   {months_remaining:.1f} months")
+                print()
+        
+        # Status indicators
+        if remaining_credits > 1000:
+            status = "✅ HEALTHY - Credits are sufficient"
+        elif remaining_credits > 500:
+            status = "⚠️  MONITOR - Credits getting low"
+        elif remaining_credits > 0:
+            status = "🚨 CRITICAL - Credits running out soon!"
+        else:
+            status = "❌ EXHAUSTED - No credits remaining!"
+        
+        print(f"Status: {status}")
+        print("=" * 60)
     
     def send_notifications(self, report: Dict[str, Any]) -> None:
         """

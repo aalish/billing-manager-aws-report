@@ -23,6 +23,15 @@ class BillingConfig(BaseModel):
     
     # Minimum cost threshold to report (in currency units)
     min_cost_threshold: float = 0.01
+    
+    # Total AWS credits available (in currency units)
+    total_credits: float = 5000.0
+    
+    # AWS profile to use (default: neelcamp)
+    aws_profile: str = 'neelcamp'
+    
+    # Credit expiration date (if known)
+    credit_expiration: str = '2026-12-31'  # Format: YYYY-MM-DD
 
 
 class IntegrationConfig(BaseModel):

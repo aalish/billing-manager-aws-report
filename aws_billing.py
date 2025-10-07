@@ -17,7 +17,9 @@ class AWSBillingAnalyzer:
     
     def __init__(self):
         """Initialize the AWS billing analyzer."""
-        self.ce_client = boto3.client('ce', region_name=config.billing.aws_region)
+        # Create boto3 session with profile
+        session = boto3.Session(profile_name=config.billing.aws_profile)
+        self.ce_client = session.client('ce', region_name=config.billing.aws_region)
         self.start_date, self.end_date = config.get_billing_period()
     
     def get_cost_by_service(self) -> Dict[str, float]:
@@ -179,7 +181,7 @@ class AWSBillingAnalyzer:
                     'End': self.end_date.strftime('%Y-%m-%d')
                 },
                 Granularity='MONTHLY',
-                Metrics=['AmortizedCost'],
+                Metrics=['UnblendedCost'],
                 GroupBy=[
                     {'Type': 'DIMENSION', 'Key': 'RECORD_TYPE'}
                 ]
@@ -190,15 +192,103 @@ class AWSBillingAnalyzer:
             for result in response['ResultsByTime']:
                 for group in result.get('Groups', []):
                     record_type = group['Keys'][0]
-                    if 'Credit' in record_type:
-                        cost = float(group['Metrics']['AmortizedCost']['Amount'])
-                        total_credits += cost
+                    if record_type == 'Credit':
+                        cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                        total_credits += cost  # Credits are already negative
             
             return total_credits
             
         except Exception as e:
             logger.error(f"Error fetching credits: {e}")
             return 0.0
+    
+    def get_usage_cost(self) -> float:
+        """
+        Get actual usage cost (before credits) for the period.
+        
+        Returns:
+            Usage cost as float
+        """
+        try:
+            response = self.ce_client.get_cost_and_usage(
+                TimePeriod={
+                    'Start': self.start_date.strftime('%Y-%m-%d'),
+                    'End': self.end_date.strftime('%Y-%m-%d')
+                },
+                Granularity='MONTHLY',
+                Metrics=['UnblendedCost'],
+                GroupBy=[
+                    {'Type': 'DIMENSION', 'Key': 'RECORD_TYPE'}
+                ]
+            )
+            
+            total_usage = 0.0
+            
+            for result in response['ResultsByTime']:
+                for group in result.get('Groups', []):
+                    record_type = group['Keys'][0]
+                    if record_type == 'Usage':
+                        cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                        total_usage += cost
+            
+            return total_usage
+            
+        except Exception as e:
+            logger.error(f"Error fetching usage cost: {e}")
+            return 0.0
+    
+    def get_credits_used_lifetime(self) -> float:
+        """
+        Get total credits used from account creation until now.
+        This calculates cumulative credit usage to determine remaining balance.
+        
+        Returns:
+            Total credits used (positive value)
+        """
+        try:
+            # Get data from maximum safe lookback (400 days = ~13.3 months)
+            # This is the maximum we can reliably access via Cost Explorer API
+            current_date = datetime.now()
+            account_start = current_date - timedelta(days=400)
+            
+            response = self.ce_client.get_cost_and_usage(
+                TimePeriod={
+                    'Start': account_start.strftime('%Y-%m-%d'),
+                    'End': current_date.strftime('%Y-%m-%d')
+                },
+                Granularity='MONTHLY',
+                Metrics=['UnblendedCost'],
+                GroupBy=[
+                    {'Type': 'DIMENSION', 'Key': 'RECORD_TYPE'}
+                ]
+            )
+            
+            total_credits_used = 0.0
+            
+            for result in response['ResultsByTime']:
+                for group in result.get('Groups', []):
+                    record_type = group['Keys'][0]
+                    if record_type == 'Credit':
+                        cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                        total_credits_used += abs(cost)  # Convert to positive
+            
+            return total_credits_used
+            
+        except Exception as e:
+            logger.error(f"Error fetching lifetime credit usage: {e}")
+            return 0.0
+    
+    def get_remaining_credits(self) -> float:
+        """
+        Calculate remaining credits based on total credits and actual usage from AWS.
+        
+        Returns:
+            Remaining credits as float
+        """
+        total_credits = config.billing.total_credits
+        credits_used = self.get_credits_used_lifetime()
+        remaining = total_credits - credits_used
+        return max(0.0, remaining)  # Ensure non-negative
     
     def get_net_cost(self) -> float:
         """
@@ -207,9 +297,9 @@ class AWSBillingAnalyzer:
         Returns:
             Net cost as float
         """
-        total_cost = self.get_total_cost()
+        usage_cost = self.get_usage_cost()
         credits = self.get_credits()
-        return total_cost + credits  # credits are negative, so this subtracts them
+        return usage_cost + credits  # credits are negative, so this subtracts them
     
     def generate_billing_report(self) -> Dict[str, Any]:
         """
@@ -220,9 +310,15 @@ class AWSBillingAnalyzer:
         """
         logger.info(f"Generating billing report for period: {self.start_date.date()} to {self.end_date.date()}")
         
-        total_cost = self.get_total_cost()
-        credits = self.get_credits()
+        # Get all cost and credit data
+        usage_cost = self.get_usage_cost()
+        credits_applied = self.get_credits()  # negative value
         net_cost = self.get_net_cost()
+        
+        # Get lifetime credit data
+        total_credits_available = config.billing.total_credits
+        credits_used_lifetime = self.get_credits_used_lifetime()
+        remaining_credits = self.get_remaining_credits()
         
         report = {
             'period': {
@@ -231,8 +327,22 @@ class AWSBillingAnalyzer:
                 'period_type': config.billing.period_type,
                 'period_count': config.billing.period_count
             },
-            'total_cost': total_cost,
-            'credits': credits,
+            'costs': {
+                'usage_cost_period': usage_cost,  # Actual usage for this period
+                'credits_applied_period': abs(credits_applied),  # Credits used this period (positive)
+                'net_cost_period': net_cost,  # Net cost after credits for period
+                'total_cost': usage_cost  # Legacy field for backward compatibility
+            },
+            'credits': {
+                'total_available': total_credits_available,
+                'used_lifetime': credits_used_lifetime,
+                'remaining': remaining_credits,
+                'applied_this_period': abs(credits_applied),
+                'expiration_date': config.billing.credit_expiration
+            },
+            # Legacy fields for backward compatibility
+            'total_cost': usage_cost,
+            'credits': credits_applied,  # negative value
             'net_cost': net_cost,
             'currency': config.billing.currency,
             'costs_by_service': self.get_cost_by_service(),
@@ -241,4 +351,4 @@ class AWSBillingAnalyzer:
             'generated_at': datetime.now().isoformat()
         }
         
-        return report 
+        return report

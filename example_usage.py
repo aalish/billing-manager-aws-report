@@ -134,6 +134,100 @@ def example_configuration():
     start_date, end_date = config.get_billing_period()
     print(f"  Billing period: {start_date.date()} to {end_date.date()}")
 
+def example_credit_analysis():
+    """Example of comprehensive credit analysis."""
+    print("\n=== Credit Analysis Example ===")
+    
+    analyzer = AWSBillingAnalyzer()
+    
+    try:
+        # Get current period credit data
+        usage_cost = analyzer.get_usage_cost()
+        credits_applied = analyzer.get_credits()
+        
+        # Get lifetime credit data
+        credits_used_lifetime = analyzer.get_credits_used_lifetime()
+        remaining_credits = analyzer.get_remaining_credits()
+        
+        print(f"Current Period Analysis:")
+        print(f"  Usage Cost: {config.billing.currency} {usage_cost:.2f}")
+        print(f"  Credits Applied: {config.billing.currency} {abs(credits_applied):.2f}")
+        print(f"  Net Cost: {config.billing.currency} {max(0, usage_cost + credits_applied):.2f}")
+        
+        print(f"\nLifetime Credit Analysis:")
+        print(f"  Total Credits: {config.billing.currency} {config.billing.total_credits:.2f}")
+        print(f"  Credits Used: {config.billing.currency} {credits_used_lifetime:.2f}")
+        print(f"  Credits Remaining: {config.billing.currency} {remaining_credits:.2f}")
+        
+        # Calculate burn rate
+        if abs(credits_applied) > 0:
+            days_in_period = (analyzer.end_date - analyzer.start_date).days
+            daily_burn = abs(credits_applied) / days_in_period if days_in_period > 0 else 0
+            monthly_burn = daily_burn * 30
+            
+            print(f"\nBurn Rate Analysis:")
+            print(f"  Daily Burn Rate: {config.billing.currency} {daily_burn:.2f}")
+            print(f"  Monthly Burn Rate: {config.billing.currency} {monthly_burn:.2f}")
+            
+            if monthly_burn > 0:
+                months_remaining = remaining_credits / monthly_burn
+                print(f"  Estimated Months Remaining: {months_remaining:.1f}")
+        
+        # Credit status
+        percent_used = (credits_used_lifetime / config.billing.total_credits * 100) if config.billing.total_credits > 0 else 0
+        print(f"\nCredit Status: {percent_used:.1f}% used")
+        
+    except Exception as e:
+        print(f"Error in credit analysis: {e}")
+
+def example_monthly_credit_trend():
+    """Example of monthly credit usage trend."""
+    print("\n=== Monthly Credit Trend Example ===")
+    
+    # Temporarily change to get last 3 months data
+    original_period_type = config.billing.period_type
+    original_period_count = config.billing.period_count
+    
+    config.billing.period_type = 'm'
+    config.billing.period_count = 3
+    
+    try:
+        analyzer = AWSBillingAnalyzer()
+        report = analyzer.generate_billing_report()
+        
+        print("3-Month Credit Usage Summary:")
+        costs = report.get('costs', {})
+        credits_info = report.get('credits', {})
+        
+        # Handle both new and legacy format
+        if isinstance(costs, dict):
+            usage_cost = costs.get('usage_cost_period', 0)
+        else:
+            usage_cost = report.get('total_cost', 0)
+            
+        if isinstance(credits_info, dict):
+            credits_applied = credits_info.get('applied_this_period', 0)
+            remaining_credits = credits_info.get('remaining', 0)
+        else:
+            credits_applied = abs(credits_info) if credits_info < 0 else 0
+            remaining_credits = 5000  # Default fallback
+        
+        print(f"  Period Usage Cost: {report['currency']} {usage_cost:.2f}")
+        print(f"  Credits Applied: {report['currency']} {credits_applied:.2f}")
+        print(f"  Remaining Credits: {report['currency']} {remaining_credits:.2f}")
+        
+        # Show service breakdown for credit usage
+        service_costs = analyzer.get_cost_by_service()
+        if service_costs:
+            print("\n  Top Services Using Credits:")
+            for service, cost in sorted(service_costs.items(), key=lambda x: x[1], reverse=True)[:5]:
+                print(f"    {service}: {report['currency']} {cost:.2f}")
+    
+    finally:
+        # Restore original configuration
+        config.billing.period_type = original_period_type
+        config.billing.period_count = original_period_count
+
 def main():
     """Run all examples."""
     print("Python AWS Billing Monitor - Usage Examples")
@@ -143,6 +237,8 @@ def main():
         # Run examples
         example_configuration()
         example_basic_usage()
+        example_credit_analysis()  # New credit analysis
+        example_monthly_credit_trend()  # New monthly trend
         example_custom_period()
         example_service_analysis()
         example_usage_type_analysis()
@@ -159,6 +255,7 @@ def main():
         print("1. Installed dependencies: pip install -r requirements.txt")
         print("2. Configured AWS credentials in .env file")
         print("3. Valid AWS permissions for Cost Explorer")
+        print("4. Configured AWS profile 'neelcamp' in ~/.aws/credentials")
 
 if __name__ == "__main__":
     main() 
